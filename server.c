@@ -1,4 +1,4 @@
-// #include "message_handle_tools.h" to be built soon
+#include "message_handle_tools.h"
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
