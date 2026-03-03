@@ -176,3 +176,165 @@ int GET_response(struct message *resp, char *uri) {
     return 0;
 }
 
+char *read_resource(FILE *fp) {
+    // get the length of the file
+    fseek(fp, 0, SEEK_END);
+    int content_length = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    // allocate memory for the content and read it
+    char *content = malloc(content_length);
+    if (content == NULL) {
+        perror("malloc");
+        fclose(fp);
+        return NULL;
+    }
+    if (fread(content, 1, content_length, fp) != content_length) {
+        perror("fread");
+        fclose(fp);
+        free(content);
+        return NULL;
+    }
+    return content;
+}
+
+char *get_resource_type(char *resource) {
+    char *extension = strchr(resource, '.');
+
+    // depending on the file extension requested, return a different content-type
+    if (extension != NULL) {
+        if (strcmp(extension, ".html") == 0) {
+            return "text/html";
+        }
+        else if (strcmp(extension, ".css") == 0) {
+            return "text/css";
+        }
+        else if (strcmp(extension, ".txt") == 0) {
+            return "text/plain";
+        }
+        else if ((strcmp(extension, ".jpeg") == 0) || (strcmp(extension, ".png") == 0)) {
+            return "image/jpeg";
+        }
+    }
+
+    return "application/octet-stream";
+}
+
+// set headers of a message
+int set_headers(struct message *resp, char *resource_type, int body_length) {
+    // get the potenial size
+    int headers_length = snprintf(NULL, 0, "Content-Type: %s\r\n"
+                                            "Server: flori/1.0\r\n"
+                                            "Content-Length: %d",
+                                            resource_type, body_length) + 1;
+    if (headers_length < 0) {
+        perror("snprintf");
+        return -1;
+    }     
+
+    // allocate memory for the headers and put them into the message component
+    resp->headers = malloc(headers_length);
+    if (sprintf(resp->headers, "Content-Type: %s\r\n"
+                               "Server: flori/1.0\r\n"
+                               "Content-Length: %d", 
+                               resource_type, body_length) == -1) {
+        perror("sprintf");
+        return -1;
+    } 
+
+    return 0;
+}
+
+int POST_response(struct message *req, struct message *resp, char *endpoint) {
+    // get the content-type for the api endpoint call
+    char *content_type = parse_key_value(req->headers, "Content-Type", "\r\n", ':');
+
+    // just an example api, you can add your own one here
+    char *body = api_call(endpoint, req->body);
+
+    // if the endpoint does not exist, set an appropriate body
+    int isNULL = 0;
+    if (body == NULL) {
+        body = strdup("API endpoint not implemented yet");
+    }
+
+    // set line component
+    if (isNULL == 0) {
+        char *line = "HTTP/1.1 201 Created";
+        resp->line = malloc(strlen(line));
+        strcpy(resp->line, line);
+    }
+    else {
+        char *line = "HTTP/1.1 501 Not Implemented";
+        resp->line = malloc(strlen(line));
+        strcpy(resp->line, line); 
+    }
+
+    int body_length = strlen(body);
+    // set the header component
+    if (isNULL == 0) {
+        if (set_headers(resp, content_type, body_length) == -1) {
+            return -1;
+        }
+    }
+    else {
+        if (set_headers(resp, "text/plain", body_length) == -1) {
+            return -1;
+        }
+    }
+
+    resp->body = malloc(body_length);
+    strcpy(resp->body, body);
+
+    free(content_type);
+    free(body);
+    return 0;
+}
+
+// function to parse the headers and the JSON data from the api example call
+char *parse_key_value(char *pairs, char *target, char *pair_seperator, char key_value_seperator) {
+    char *local_pairs = strdup(pairs);
+    str_trim(local_pairs);
+
+    char *local_pair = strtok(local_pairs, pair_seperator);
+    char *key, *value;
+
+    while (local_pair != NULL) {
+        str_trim(local_pair);
+        char *key_end = strchr(local_pair, key_value_seperator) -1;
+        key = malloc(key_end - local_pair + 1);
+        strncpy(key, local_pair, key_end - local_pair + 1);
+        
+        if (strncmp(key, target, strlen(target)) == 0) {
+            char *value_start = local_pair + strlen(key) + 1;
+            char *value_end = local_pair + strlen(local_pair);
+            value = malloc(value_end - value_start);
+            strncpy(value, value_start, value_end - value_start);
+            str_trim(value); 
+            free(key);
+            free(local_pairs);
+
+            return value;
+        }
+
+        local_pair = strtok(NULL, pair_seperator);
+    }
+    
+    free(key);
+    free(local_pairs);
+
+    return NULL;
+}
+
+// function to handle API calls
+char *api_call(char *endpoint, char *data) {
+
+    if (strcmp(endpoint, "create-user")) {
+        return create_user(data);
+    }
+    else if (strcmp(endpoint, "some_other_endpoint")) {
+        // add your own API endpoint here
+    }
+
+    return NULL;
+}
